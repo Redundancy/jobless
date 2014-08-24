@@ -1,0 +1,6 @@
+Tasks:
+    - Name: jobless.build
+      Command: ["go", "build", "-v", "-o", "jobless.exe", "github.com/Redundancy/jobless/cmd"]
+      CWD:  "{{var `OUTPUT_FOLDER`}}"
+      Environment:
+          GOPATH: "{{var `GOPATH`}}"

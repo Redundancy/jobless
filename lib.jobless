@@ -1,0 +1,15 @@
+Tasks:
+    - Name: jobless.test
+      # Automatically parsing the command and arguments from a string would be nicer
+      Command: ["go", "test", "-v", "."]
+      Environment:
+            # This is using go's text template system for convenience
+            # A more readable mechanism would be better
+            GOPATH: "{{var `GOPATH`}}"  
+    # Because this is YAML, you can comment
+    # This command should be translated to run cmd to execute the batch script          
+    - Name: jobless.batch.test1
+      Command: ["test.bat"]
+    # This one does not need translation
+    - Name: jobless.batch.test2
+      Command: ["cmd", "/c", "test.bat"]
