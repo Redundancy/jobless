@@ -106,21 +106,30 @@ func run(c *cli.Context) {
 
 	pathStores := make(map[string]*jobless.ChainedVariableStore)
 
-	WalkJoblessFiles(
+	if originalWd, err := os.Getwd(); err != nil {
+		log.Println(err)
+		os.Exit(1)
+	} else {
+		defer os.Chdir(originalWd)
+	}
+
+	err = WalkJoblessFiles(
 		cwd,
 		func(jobFile *JoblessFile) error {
 			parent := findParentStore(jobFile.Filepath, pathStores)
 			taskDir := filepath.Dir(jobFile.Filepath)
 
-			jobless.ResolveVariables(
-				&jobFile.Variables,
-				parent,
-				taskDir,
-			)
+			/*if parent != nil {
+				log.Println("Chaining", jobFile.Filepath, "to", parent.Path)
+			}*/
 
-			thisStore := jobless.NewChainedVariableStore(parent)
+			thisStore := &jobless.ChainedVariableStore{
+				Path:      jobFile.Filepath,
+				Variables: jobFile.Variables,
+				Parent:    parent,
+			}
+
 			pathStores[taskDir] = thisStore
-			thisStore.Variables = jobFile.Variables
 
 			for _, task := range jobFile.Tasks {
 				if !task.Name.Matches(pattern) {
@@ -128,20 +137,30 @@ func run(c *cli.Context) {
 				}
 
 				log.Println("--------", task.Name, "--------")
+				var err error
+
+				resolvedEnvironment := make(map[string]string, len(task.Environment))
 
 				for k, v := range task.Environment {
-					task.Environment[k] = jobless.ResolveVariableString(
-						v,
-						thisStore,
-						taskDir,
-					)
+					//log.Println("Resolving Env:", k)
+					resolvedEnvironment[k], err = thisStore.ResolveString(v)
+
+					if err != nil {
+						return fmt.Errorf(
+							"Could not resolve environment variable %v for task %v: %v",
+							k,
+							task.Name,
+							err,
+						)
+					}
 				}
 
-				executable := jobless.ResolveVariableString(
-					task.Command[0],
-					thisStore,
-					taskDir,
-				)
+				//log.Println("Resolving Exe:", task.Command[0])
+				executable, err := thisStore.ResolveString(task.Command[0])
+
+				if err != nil {
+					return err
+				}
 
 				arguments := task.Command[1:]
 
@@ -150,10 +169,33 @@ func run(c *cli.Context) {
 						[]string{"/c", executable},
 						arguments...,
 					)
-					executable = "cmd"
+					executable = "cmd.exe"
 				}
 
+				wd, err := thisStore.ResolveString(task.CWD)
+
+				if err != nil {
+					return fmt.Errorf(
+						"Could not resolve CWD for task %v - %v: %v",
+						task.Name,
+						task.CWD,
+						err,
+					)
+				}
+
+				if wd == "" {
+					wd = taskDir
+				}
+
+				if err = os.Chdir(wd); err != nil {
+					return err
+				}
+
+				// Set the CWD correctly before creating the command object
+
 				cmd := exec.Command(executable, arguments...)
+				cmd.Dir = wd
+				log.Println("Executing:", executable, arguments)
 
 				setEnvironment := make(map[string]bool, len(task.Environment))
 				cmd.Env = make([]string, 0, len(os.Environ()))
@@ -162,16 +204,19 @@ func run(c *cli.Context) {
 					kv := strings.Split(e, "=")
 					k := kv[0]
 
-					if joblessEnvValue, present := task.Environment[k]; present {
+					if joblessEnvValue, present := resolvedEnvironment[k]; present {
+						log.Println("Env", k, "=", joblessEnvValue)
 						cmd.Env = append(cmd.Env, k+"="+joblessEnvValue)
 						setEnvironment[k] = true
 					} else {
+						//log.Println("Env inherit:", e)
 						cmd.Env = append(cmd.Env, e)
 					}
 				}
 
-				for k, v := range task.Environment {
+				for k, v := range resolvedEnvironment {
 					if !setEnvironment[k] {
+						log.Println("Env", k, "=", v)
 						cmd.Env = append(cmd.Env, k+"="+v)
 					}
 				}
@@ -184,29 +229,23 @@ func run(c *cli.Context) {
 
 				go io.Copy(os.Stdout, outPipe)
 				go io.Copy(os.Stderr, errPipe)
+				log.Println("Working Directory =", cmd.Dir)
 
-				cmd.Dir = jobless.ResolveVariableString(
-					task.CWD,
-					thisStore,
-					taskDir,
-				)
-
-				if cmd.Dir == "" {
-					cmd.Dir = taskDir
+				err = cmd.Run()
+				if err == nil {
+					log.Println("-------- Done --------")
+				} else {
+					return err
 				}
-
-				err := cmd.Run()
-
-				if err != nil {
-					log.Println(err)
-					break
-				}
-
 			}
 
 			return nil
 		},
 	)
 
+	if err != nil {
+		log.Println(err)
+		os.Exit(1)
+	}
 	return
 }

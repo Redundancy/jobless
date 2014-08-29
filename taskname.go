@@ -19,14 +19,17 @@ func (t TaskName) String() string {
 	return strings.Join(t, SEPARATOR)
 }
 
+// JSON saving support
 func (t TaskName) MarshalJSON() ([]byte, error) {
 	return []byte(QUOTE + t.String() + QUOTE), nil
 }
 
+// YAML saving support
 func (t TaskName) GetYAML() (tag string, value interface{}) {
 	return "", t.String()
 }
 
+// JSON loading suppor
 func (t *TaskName) UnmarshalJSON(d []byte) error {
 	asString := string(d)
 
@@ -40,6 +43,7 @@ func (t *TaskName) UnmarshalJSON(d []byte) error {
 	return nil
 }
 
+// Yaml loading support
 func (t *TaskName) SetYAML(tag string, value interface{}) bool {
 	if str, ok := value.(string); !ok {
 		return false

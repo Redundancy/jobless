@@ -4,50 +4,107 @@ import (
 	"testing"
 )
 
-func TestVariableStoreReturnsLocalValue(t *testing.T) {
-	const VALUE = "b"
-	const KEY = "a"
+func TestEmptyVariableStoreCannotResolveVariable(t *testing.T) {
+	v := &ChainedVariableStore{
+		Variables: map[string]string{},
+	}
 
-	vs := NewChainedVariableStore(nil)
-	vs.Variables[KEY] = VALUE
+	_, err := v.Resolve("foo")
 
-	if val, has := vs.Get(KEY); !has {
-		t.Error("Variable Store does not have the local variable")
-	} else if val != VALUE {
-		t.Errorf("Unexpected value %v", val)
+	if err == nil {
+		t.Errorf("An empty variable store should not resolve a variable")
 	}
 }
 
-func TestVariableStoreReturnsChainedValue(t *testing.T) {
-	const KEY = "a"
-	const VALUE = "b"
+func TestVariableStoreResolvesLocalSimpleValue(t *testing.T) {
+	const EXPECTED = "bar"
 
-	parent := NewChainedVariableStore(nil)
-	parent.Variables[KEY] = VALUE
+	v := &ChainedVariableStore{
+		Variables: map[string]string{
+			"foo": EXPECTED,
+		},
+	}
 
-	child := NewChainedVariableStore(parent)
+	val, err := v.Resolve("foo")
 
-	if val, has := child.Get(KEY); !has {
-		t.Error("Variable Store does not have the local variable")
-	} else if val != VALUE {
-		t.Errorf("Unexpected value %v", val)
+	if val != EXPECTED {
+		t.Errorf(
+			"Did not get expected value \"%v\", instead got \"%v\"",
+			EXPECTED, val)
+	}
+	if err != nil {
+		t.Errorf("Resolve should not cause an error")
 	}
 }
 
-func TestOverrideHidesChainedValue(t *testing.T) {
-	const KEY = "a"
-	const VALUE = "b"
-	const OVERRIDE = "c"
+func TestVariableStoreResolvesParentSimpleValue(t *testing.T) {
+	const EXPECTED = "bar"
 
-	parent := NewChainedVariableStore(nil)
-	parent.Variables[KEY] = VALUE
+	parent := &ChainedVariableStore{
+		Variables: map[string]string{
+			"foo": EXPECTED,
+		},
+	}
 
-	child := NewChainedVariableStore(parent)
-	child.Variables[KEY] = OVERRIDE
+	v := &ChainedVariableStore{
+		Parent: parent,
+	}
 
-	if val, has := child.Get(KEY); !has {
-		t.Error("Variable Store does not have the local variable")
-	} else if val != OVERRIDE {
-		t.Errorf("Unexpected value %v", val)
+	val, err := v.Resolve("foo")
+
+	if val != EXPECTED {
+		t.Errorf(
+			"Did not get expected value \"%v\", instead got \"%v\"",
+			EXPECTED, val)
+	}
+	if err != nil {
+		t.Errorf("Resolve should not cause an error")
 	}
 }
+
+func TestVariableStoreResolvesComplexLocalValue(t *testing.T) {
+	const EXPECTED = "bar"
+
+	v := &ChainedVariableStore{
+		Variables: map[string]string{
+			"foo": EXPECTED,
+			"zoo": "{{ var `foo` }}",
+		},
+	}
+
+	val, err := v.Resolve("zoo")
+
+	if val != EXPECTED {
+		t.Errorf(
+			"Did not get expected value \"%v\", instead got \"%v\"",
+			EXPECTED, val)
+	}
+	if err != nil {
+		t.Errorf("Resolve should not cause an error")
+	}
+}
+
+/*
+func TestSensibleResolveError(t *testing.T) {
+	const EXPECTED = "bar"
+
+	parent := &ChainedVariableStore{
+		Path: "B",
+		Variables: map[string]string{
+			"foo": EXPECTED,
+		},
+	}
+
+	v := &ChainedVariableStore{
+		Parent: parent,
+		Path:   "A",
+		Variables: map[string]string{
+			"zagbat": "{{ var `shoo` }}",
+		},
+	}
+
+	_, err := v.Resolve("zagbat")
+
+	t.Error(err)
+}
+*/

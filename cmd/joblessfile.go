@@ -17,7 +17,7 @@ type Task struct {
 	Command []string `yaml:"Command,omitempty"`
 
 	// Environment variables
-	Environment map[string]string `json:",omitempty" yaml:",omitempty"`
+	Environment map[string]string `json:",omitempty" yaml:"Environment,omitempty"`
 }
 
 type JoblessFile struct {
